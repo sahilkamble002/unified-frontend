@@ -232,7 +232,7 @@ export default function EventDetailPage() {
   const canManageFinance = ["SUPER_ADMIN", "ADMIN", "FINANCE"].includes(
     currentMemberRole
   );
-  const canManageNotifications = ["SUPER_ADMIN", "ADMIN", "MANAGER"].includes(
+  const canManageNotifications = ["SUPER_ADMIN", "ADMIN", "FINANCE"].includes(
     currentMemberRole
   );
   const taskStats = useMemo(() => {
