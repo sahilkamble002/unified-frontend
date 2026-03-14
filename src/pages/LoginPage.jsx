@@ -10,14 +10,18 @@ export default function LoginPage() {
 
   const handleChange = (event) => {
     const { name, value } = event.target;
-    setForm((prev) => ({ ...prev, [name]: value }));
+    const nextValue = name === "username" ? value.toLowerCase() : value;
+    setForm((prev) => ({ ...prev, [name]: nextValue }));
   };
 
   const handleSubmit = async (event) => {
     event.preventDefault();
     setError("");
     try {
-      await login(form);
+      await login({
+        ...form,
+        username: form.username.trim().toLowerCase()
+      });
       navigate("/events");
     } catch (err) {
       setError(err.message || "Login failed");
@@ -63,8 +67,12 @@ export default function LoginPage() {
               value={form.username}
               onChange={handleChange}
               placeholder="your.username"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
               required
             />
+            <small>Usernames are matched in lowercase automatically.</small>
           </label>
           <label className="field">
             <span>Password</span>

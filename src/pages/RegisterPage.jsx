@@ -17,7 +17,9 @@ export default function RegisterPage() {
 
   const handleChange = (event) => {
     const { name, value } = event.target;
-    setForm((prev) => ({ ...prev, [name]: value }));
+    const nextValue =
+      name === "username" || name === "email" ? value.toLowerCase() : value;
+    setForm((prev) => ({ ...prev, [name]: nextValue }));
   };
 
   const handleSubmit = async (event) => {
@@ -25,7 +27,11 @@ export default function RegisterPage() {
     setError("");
     setSuccess("");
     try {
-      await register(form);
+      await register({
+        ...form,
+        username: form.username.trim().toLowerCase(),
+        email: form.email.trim().toLowerCase()
+      });
       setSuccess("Account created. Please log in.");
       setTimeout(() => navigate("/login"), 700);
     } catch (err) {
@@ -81,8 +87,12 @@ export default function RegisterPage() {
               value={form.username}
               onChange={handleChange}
               placeholder="unique.username"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
               required
             />
+            <small>Usernames are stored in lowercase automatically.</small>
           </label>
           <label className="field">
             <span>Email</span>
@@ -92,6 +102,9 @@ export default function RegisterPage() {
               value={form.email}
               onChange={handleChange}
               placeholder="you@example.com"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
               required
             />
           </label>

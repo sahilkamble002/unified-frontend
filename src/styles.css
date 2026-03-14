@@ -494,6 +494,12 @@ p {
   text-transform: uppercase;
 }
 
+.field small {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
 input,
 textarea,
 select {
