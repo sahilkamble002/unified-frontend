@@ -1,5 +1,6 @@
-import { createContext, useContext, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import * as authApi from "../api/auth.js";
+import { disableWebPush, initializeWebPush } from "../lib/web-push.js";
 import {
   clearAuth,
   getRefreshToken,
@@ -14,6 +15,18 @@ const AuthContext = createContext(null);
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(getStoredUser());
   const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    if (!user) {
+      return undefined;
+    }
+
+    initializeWebPush().catch(() => {
+      // best-effort registration; app should continue if push setup fails
+    });
+
+    return undefined;
+  }, [user]);
 
   const login = async (payload) => {
     setIsLoading(true);
@@ -47,6 +60,7 @@ export const AuthProvider = ({ children }) => {
   const logout = async () => {
     const refreshToken = getRefreshToken();
     try {
+      await disableWebPush();
       if (refreshToken) {
         await authApi.logout(refreshToken);
       }

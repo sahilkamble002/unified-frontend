@@ -257,11 +257,15 @@ export default function EventDetailPage() {
     Number(value || 0).toLocaleString("en-IN");
   const formatStatusLabel = (value) => {
     if (!value || value === "PENDING") {
-      return "Not verified";
+      return "Pending review";
     }
 
     if (value === "SUCCESS") {
       return "Verified";
+    }
+
+    if (value === "FAILED") {
+      return "Not verified";
     }
 
     return value
@@ -1429,30 +1433,33 @@ export default function EventDetailPage() {
                             {formatStatusLabel(donation.status)}
                           </div>
                           {canManageFinance &&
-                          ["PENDING", "SUCCESS", null, undefined].includes(
-                            donation.status
-                          ) ? (
-                            <button
-                              type="button"
-                              className="btn ghost"
-                              onClick={() =>
-                                handleVerifyDonation(
-                                  donation.id,
-                                  donation.status === "SUCCESS"
-                                    ? "PENDING"
-                                    : "SUCCESS"
-                                )
-                              }
-                              disabled={verifyingDonationId === donation.id}
-                            >
-                              {verifyingDonationId === donation.id
-                                ? donation.status === "SUCCESS"
-                                  ? "Updating..."
-                                  : "Verifying..."
-                                : donation.status === "SUCCESS"
-                                  ? "Mark not verified"
+                          (!donation.status || donation.status === "PENDING") ? (
+                            <>
+                              <button
+                                type="button"
+                                className="btn ghost"
+                                onClick={() =>
+                                  handleVerifyDonation(donation.id, "SUCCESS")
+                                }
+                                disabled={verifyingDonationId === donation.id}
+                              >
+                                {verifyingDonationId === donation.id
+                                  ? "Saving..."
                                   : "Verify"}
-                            </button>
+                              </button>
+                              <button
+                                type="button"
+                                className="btn ghost"
+                                onClick={() =>
+                                  handleVerifyDonation(donation.id, "FAILED")
+                                }
+                                disabled={verifyingDonationId === donation.id}
+                              >
+                                {verifyingDonationId === donation.id
+                                  ? "Saving..."
+                                  : "Not verify"}
+                              </button>
+                            </>
                           ) : null}
                         </div>
                       </div>

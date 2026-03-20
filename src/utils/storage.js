@@ -1,6 +1,7 @@
 const ACCESS_TOKEN_KEY = "erp_access_token";
 const REFRESH_TOKEN_KEY = "erp_refresh_token";
 const USER_KEY = "erp_user";
+const PUSH_TOKEN_KEY = "erp_push_token";
 
 export const getAccessToken = () => localStorage.getItem(ACCESS_TOKEN_KEY);
 export const getRefreshToken = () => localStorage.getItem(REFRESH_TOKEN_KEY);
@@ -33,8 +34,19 @@ export const setStoredUser = (user) => {
   }
 };
 
+export const getPushToken = () => localStorage.getItem(PUSH_TOKEN_KEY);
+
+export const setPushToken = (token) => {
+  if (token) {
+    localStorage.setItem(PUSH_TOKEN_KEY, token);
+  } else {
+    localStorage.removeItem(PUSH_TOKEN_KEY);
+  }
+};
+
 export const clearAuth = () => {
   localStorage.removeItem(ACCESS_TOKEN_KEY);
   localStorage.removeItem(REFRESH_TOKEN_KEY);
   localStorage.removeItem(USER_KEY);
+  localStorage.removeItem(PUSH_TOKEN_KEY);
 };
