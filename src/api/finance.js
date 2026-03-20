@@ -25,6 +25,12 @@ export const createExpense = (eventId, payload) =>
     body: payload
   });
 
+export const updateExpense = (eventId, expenseId, payload) =>
+  apiRequest(`/finance/${eventId}/expense/${expenseId}`, {
+    method: "PATCH",
+    body: payload
+  });
+
 export const getEventExpenses = (eventId, params = {}) => {
   const query = new URLSearchParams();
   if (params?.page) query.set("page", params.page);
@@ -38,7 +44,8 @@ export const getEventExpenses = (eventId, params = {}) => {
 export const getDonationQR = (eventId) =>
   apiRequest(`/finance/${eventId}/donation-qr`);
 
-export const verifyDonation = (donationId) =>
+export const verifyDonation = (donationId, status = "SUCCESS") =>
   apiRequest(`/finance/donation/${donationId}/verify`, {
-    method: "PATCH"
+    method: "PATCH",
+    body: { status }
   });

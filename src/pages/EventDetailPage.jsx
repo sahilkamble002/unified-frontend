@@ -72,6 +72,7 @@ export default function EventDetailPage() {
     title: "",
     amount: ""
   });
+  const [editingExpenseId, setEditingExpenseId] = useState(null);
   const [notificationForm, setNotificationForm] = useState({
     title: "",
     message: "",
@@ -84,6 +85,7 @@ export default function EventDetailPage() {
   const [verifyingDonationId, setVerifyingDonationId] = useState(null);
 
   const [actionLoading, setActionLoading] = useState(false);
+  const isEditingExpense = Boolean(editingExpenseId);
 
   const loadEvent = async () => {
     setLoading(true);
@@ -186,6 +188,8 @@ export default function EventDetailPage() {
   useEffect(() => {
     setDonationPage(1);
     setExpensePage(1);
+    setEditingExpenseId(null);
+    setExpenseForm({ title: "", amount: "" });
   }, [eventId]);
 
   useEffect(() => {
@@ -251,6 +255,25 @@ export default function EventDetailPage() {
     : 0;
   const formatAmount = (value) =>
     Number(value || 0).toLocaleString("en-IN");
+  const formatStatusLabel = (value) => {
+    if (!value || value === "PENDING") {
+      return "Not verified";
+    }
+
+    if (value === "SUCCESS") {
+      return "Verified";
+    }
+
+    return value
+      .toLowerCase()
+      .split("_")
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(" ");
+  };
+  const resetExpenseForm = () => {
+    setExpenseForm({ title: "", amount: "" });
+    setEditingExpenseId(null);
+  };
 
   const handleEventChange = (event) => {
     const { name, value } = event.target;
@@ -444,15 +467,31 @@ export default function EventDetailPage() {
     setActionLoading(true);
     setFinanceError("");
     try {
-      await financeApi.createExpense(eventId, {
+      const payload = {
         title: expenseForm.title.trim(),
         amount: expenseForm.amount
-      });
-      setExpenseForm({ title: "", amount: "" });
-      setExpensePage(1);
-      await loadFinance({ expensePage: 1 });
+      };
+
+      if (editingExpenseId) {
+        await financeApi.updateExpense(eventId, editingExpenseId, payload);
+      } else {
+        await financeApi.createExpense(eventId, payload);
+      }
+
+      resetExpenseForm();
+      const nextExpensePage = editingExpenseId ? expensePage : 1;
+      if (expensePage !== nextExpensePage) {
+        setExpensePage(nextExpensePage);
+      } else {
+        await loadFinance({ expensePage: nextExpensePage });
+      }
     } catch (err) {
-      setFinanceError(err.message || "Failed to record expense");
+      setFinanceError(
+        err.message ||
+          (editingExpenseId
+            ? "Failed to update expense"
+            : "Failed to record expense")
+      );
     } finally {
       setActionLoading(false);
     }
@@ -469,17 +508,39 @@ export default function EventDetailPage() {
     }
   };
 
-  const handleVerifyDonation = async (donationId) => {
+  const handleVerifyDonation = async (donationId, status = "SUCCESS") => {
     setVerifyingDonationId(donationId);
     setFinanceError("");
     try {
-      await financeApi.verifyDonation(donationId);
+      await financeApi.verifyDonation(donationId, status);
       await loadFinance();
     } catch (err) {
-      setFinanceError(err.message || "Failed to verify donation");
+      setFinanceError(
+        err.message ||
+          (status === "SUCCESS"
+            ? "Failed to verify donation"
+            : "Failed to mark donation as not verified")
+      );
     } finally {
       setVerifyingDonationId(null);
     }
+  };
+
+  const handleEditExpense = (expense) => {
+    setEditingExpenseId(expense.id);
+    setExpenseForm({
+      title: expense.title || "",
+      amount:
+        expense.amount === null || expense.amount === undefined
+          ? ""
+          : String(expense.amount)
+    });
+    setFinanceError("");
+  };
+
+  const handleCancelExpenseEdit = () => {
+    resetExpenseForm();
+    setFinanceError("");
   };
 
   const handleUpdateTaskStatus = async (taskId, status) => {
@@ -786,7 +847,7 @@ export default function EventDetailPage() {
                     <div>
                       <div className="panel-title">Find member</div>
                       <div className="panel-subtitle">
-                        Search by name, username, or email.
+                        Search by name or username.
                       </div>
                     </div>
                   </div>
@@ -813,7 +874,7 @@ export default function EventDetailPage() {
                           <div>
                             <div className="list-title">{user.name}</div>
                             <div className="list-meta">
-                              @{user.username} · {user.email}
+                              @{user.username}
                             </div>
                           </div>
                           <button
@@ -911,8 +972,7 @@ export default function EventDetailPage() {
                       <div>
                         <div className="list-title">{member.user.name}</div>
                         <div className="list-meta">
-                          {member.user.username || "no-username"} ·{" "}
-                          {member.user.email}
+                          @{member.user.username || "no-username"}
                         </div>
                       </div>
                       <div className="list-actions">
@@ -1213,9 +1273,13 @@ export default function EventDetailPage() {
                   <div className="card finance-card">
                     <div className="panel-header">
                       <div>
-                        <div className="panel-title">Record expense</div>
+                        <div className="panel-title">
+                          {isEditingExpense ? "Edit expense" : "Record expense"}
+                        </div>
                         <div className="panel-subtitle">
-                          Track outgoing payments.
+                          {isEditingExpense
+                            ? "Update the payout details before saving."
+                            : "Track outgoing payments."}
                         </div>
                       </div>
                     </div>
@@ -1241,8 +1305,17 @@ export default function EventDetailPage() {
                         />
                       </label>
                       <div className="form-actions">
+                        {isEditingExpense ? (
+                          <button
+                            type="button"
+                            className="btn ghost"
+                            onClick={handleCancelExpenseEdit}
+                          >
+                            Cancel
+                          </button>
+                        ) : null}
                         <button className="btn primary" type="submit">
-                          Save expense
+                          {isEditingExpense ? "Update expense" : "Save expense"}
                         </button>
                       </div>
                     </form>
@@ -1353,19 +1426,32 @@ export default function EventDetailPage() {
                         <div className="list-actions">
                           <div className="badge">₹{donation.amount}</div>
                           <div className="badge soft">
-                            {donation.status || "SUCCESS"}
+                            {formatStatusLabel(donation.status)}
                           </div>
                           {canManageFinance &&
-                          donation.status === "PENDING" ? (
+                          ["PENDING", "SUCCESS", null, undefined].includes(
+                            donation.status
+                          ) ? (
                             <button
                               type="button"
                               className="btn ghost"
-                              onClick={() => handleVerifyDonation(donation.id)}
+                              onClick={() =>
+                                handleVerifyDonation(
+                                  donation.id,
+                                  donation.status === "SUCCESS"
+                                    ? "PENDING"
+                                    : "SUCCESS"
+                                )
+                              }
                               disabled={verifyingDonationId === donation.id}
                             >
                               {verifyingDonationId === donation.id
-                                ? "Verifying..."
-                                : "Verify"}
+                                ? donation.status === "SUCCESS"
+                                  ? "Updating..."
+                                  : "Verifying..."
+                                : donation.status === "SUCCESS"
+                                  ? "Mark not verified"
+                                  : "Verify"}
                             </button>
                           ) : null}
                         </div>
@@ -1383,8 +1469,8 @@ export default function EventDetailPage() {
                     <div className="panel-title">Expenses</div>
                     <div className="panel-subtitle">
                       {expensePagination
-                        ? `Page ${expensePagination.page} of ${expensePagination.totalPages} · Verified payouts for this event.`
-                        : "All verified payouts for this event."}
+                        ? `Page ${expensePagination.page} of ${expensePagination.totalPages} · Recorded payouts for this event.`
+                        : "All recorded payouts for this event."}
                     </div>
                   </div>
                   {expensePagination ? (
@@ -1436,7 +1522,18 @@ export default function EventDetailPage() {
                               "member"}
                           </div>
                         </div>
-                        <div className="badge">₹{expense.amount}</div>
+                        <div className="list-actions">
+                          <div className="badge">₹{expense.amount}</div>
+                          {canManageFinance ? (
+                            <button
+                              type="button"
+                              className="btn ghost"
+                              onClick={() => handleEditExpense(expense)}
+                            >
+                              Edit
+                            </button>
+                          ) : null}
+                        </div>
                       </div>
                     ))
                   ) : (

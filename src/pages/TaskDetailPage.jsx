@@ -196,7 +196,9 @@ export default function TaskDetailPage() {
                         {assignment.user?.name || "Member"}
                       </div>
                       <div className="list-meta">
-                        {assignment.user?.email || "No email"}
+                        {assignment.user?.username
+                          ? `@${assignment.user.username}`
+                          : "Assigned member"}
                       </div>
                     </div>
                     <div className="badge">{assignment.progress}%</div>

@@ -79,7 +79,7 @@ export default function AppLayout({ children }) {
               <div>
                 <div className="user-name">{user?.name || "User"}</div>
                 <div className="user-email">
-                  {user?.username ? `@${user.username}` : user?.email || ""}
+                  {user?.username ? `@${user.username}` : "Workspace member"}
                 </div>
               </div>
             </div>
