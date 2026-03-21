@@ -289,6 +289,19 @@ export default function EventDetailPage() {
   const canManageFinance = ["SUPER_ADMIN", "ADMIN", "FINANCE"].includes(
     currentMemberRole
   );
+  const canCreateDonation = [
+    "SUPER_ADMIN",
+    "ADMIN",
+    "FINANCE",
+    "VOLUNTEER"
+  ].includes(currentMemberRole);
+  const canCreateExpense = [
+    "SUPER_ADMIN",
+    "ADMIN",
+    "FINANCE",
+    "MANAGER",
+    "VOLUNTEER"
+  ].includes(currentMemberRole);
   const canManageNotifications = ["SUPER_ADMIN", "ADMIN", "FINANCE"].includes(
     currentMemberRole
   );
@@ -1297,118 +1310,122 @@ export default function EventDetailPage() {
 
             <div className="page-grid">
               <div className="stack">
-                {canManageFinance ? (
+                {canManageFinance || canCreateExpense ? (
                   <>
-                    <div className="card finance-card">
-                      <div className="panel-header">
-                        <div>
-                          <div className="panel-title">Record donation</div>
-                          <div className="panel-subtitle">
-                            Add a donation for verification.
+                    {canCreateDonation ? (
+                      <div className="card finance-card">
+                        <div className="panel-header">
+                          <div>
+                            <div className="panel-title">Record donation</div>
+                            <div className="panel-subtitle">
+                              Volunteers can add donations, but only finance roles can verify them.
+                            </div>
                           </div>
                         </div>
-                      </div>
-                      <form className="form" onSubmit={handleCreateDonation}>
-                        <label className="field">
-                          <span>Donor name</span>
-                          <input
-                            name="donorName"
-                            value={donationForm.donorName}
-                            onChange={handleDonationChange}
-                            required
-                          />
-                        </label>
-                        <label className="field">
-                          <span>Amount</span>
-                          <input
-                            name="amount"
-                            type="number"
-                            min="1"
-                            value={donationForm.amount}
-                            onChange={handleDonationChange}
-                            required
-                          />
-                        </label>
-                        <label className="field">
-                          <span>Payment method</span>
-                          <select
-                            name="paymentMethod"
-                            value={donationForm.paymentMethod}
-                            onChange={handleDonationChange}
-                          >
-                            {PAYMENT_METHODS.map((method) => (
-                              <option key={method} value={method}>
-                                {method}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                        <label className="field">
-                          <span>Reference ID (optional)</span>
-                          <input
-                            name="referenceId"
-                            value={donationForm.referenceId}
-                            onChange={handleDonationChange}
-                          />
-                        </label>
-                        <div className="form-actions">
-                          <button className="btn primary" type="submit">
-                            Save donation
-                          </button>
-                        </div>
-                      </form>
-                    </div>
-
-                    <div className="card finance-card">
-                      <div className="panel-header">
-                        <div>
-                          <div className="panel-title">
-                            {isEditingExpense ? "Edit expense" : "Record expense"}
-                          </div>
-                          <div className="panel-subtitle">
-                            {isEditingExpense
-                              ? "Update the payout details before saving."
-                              : "Track outgoing payments."}
-                          </div>
-                        </div>
-                      </div>
-                      <form className="form" onSubmit={handleCreateExpense}>
-                        <label className="field">
-                          <span>Title</span>
-                          <input
-                            name="title"
-                            value={expenseForm.title}
-                            onChange={handleExpenseChange}
-                            required
-                          />
-                        </label>
-                        <label className="field">
-                          <span>Amount</span>
-                          <input
-                            name="amount"
-                            type="number"
-                            min="1"
-                            value={expenseForm.amount}
-                            onChange={handleExpenseChange}
-                            required
-                          />
-                        </label>
-                        <div className="form-actions">
-                          {isEditingExpense ? (
-                            <button
-                              type="button"
-                              className="btn ghost"
-                              onClick={handleCancelExpenseEdit}
+                        <form className="form" onSubmit={handleCreateDonation}>
+                          <label className="field">
+                            <span>Donor name</span>
+                            <input
+                              name="donorName"
+                              value={donationForm.donorName}
+                              onChange={handleDonationChange}
+                              required
+                            />
+                          </label>
+                          <label className="field">
+                            <span>Amount</span>
+                            <input
+                              name="amount"
+                              type="number"
+                              min="1"
+                              value={donationForm.amount}
+                              onChange={handleDonationChange}
+                              required
+                            />
+                          </label>
+                          <label className="field">
+                            <span>Payment method</span>
+                            <select
+                              name="paymentMethod"
+                              value={donationForm.paymentMethod}
+                              onChange={handleDonationChange}
                             >
-                              Cancel
+                              {PAYMENT_METHODS.map((method) => (
+                                <option key={method} value={method}>
+                                  {method}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <label className="field">
+                            <span>Reference ID (optional)</span>
+                            <input
+                              name="referenceId"
+                              value={donationForm.referenceId}
+                              onChange={handleDonationChange}
+                            />
+                          </label>
+                          <div className="form-actions">
+                            <button className="btn primary" type="submit">
+                              Save donation
                             </button>
-                          ) : null}
-                          <button className="btn primary" type="submit">
-                            {isEditingExpense ? "Update expense" : "Save expense"}
-                          </button>
+                          </div>
+                        </form>
+                      </div>
+                    ) : null}
+
+                    {canCreateExpense ? (
+                      <div className="card finance-card">
+                        <div className="panel-header">
+                          <div>
+                            <div className="panel-title">
+                              {isEditingExpense ? "Edit expense" : "Record expense"}
+                            </div>
+                            <div className="panel-subtitle">
+                              {isEditingExpense
+                                ? "Update the payout details before saving."
+                                : "Any event member except VIEWER can add an expense."}
+                            </div>
+                          </div>
                         </div>
-                      </form>
-                    </div>
+                        <form className="form" onSubmit={handleCreateExpense}>
+                          <label className="field">
+                            <span>Title</span>
+                            <input
+                              name="title"
+                              value={expenseForm.title}
+                              onChange={handleExpenseChange}
+                              required
+                            />
+                          </label>
+                          <label className="field">
+                            <span>Amount</span>
+                            <input
+                              name="amount"
+                              type="number"
+                              min="1"
+                              value={expenseForm.amount}
+                              onChange={handleExpenseChange}
+                              required
+                            />
+                          </label>
+                          <div className="form-actions">
+                            {isEditingExpense ? (
+                              <button
+                                type="button"
+                                className="btn ghost"
+                                onClick={handleCancelExpenseEdit}
+                              >
+                                Cancel
+                              </button>
+                            ) : null}
+                            <button className="btn primary" type="submit">
+                              {isEditingExpense ? "Update expense" : "Save expense"}
+                            </button>
+                          </div>
+                        </form>
+                      </div>
+                    ) : null}
                   </>
                 ) : null}
               </div>
