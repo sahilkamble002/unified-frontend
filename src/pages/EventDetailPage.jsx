@@ -20,6 +20,43 @@ const STATUSES = ["PENDING", "IN_PROGRESS", "COMPLETED"];
 const PAYMENT_METHODS = ["CASH", "UPI", "BANK_TRANSFER", "CARD"];
 const DONATION_PAGE_SIZE = 5;
 const EXPENSE_PAGE_SIZE = 5;
+const TASK_MANAGER_ROLES = ["SUPER_ADMIN", "ADMIN", "MANAGER"];
+const EVENT_ADMIN_ROLES = ["SUPER_ADMIN", "ADMIN"];
+const MEMBER_MANAGER_ROLES = ["SUPER_ADMIN"];
+const MEMBER_PREVIEW_ROLES = ["SUPER_ADMIN", "ADMIN", "MANAGER", "FINANCE"];
+const EVENT_ROLE_LIMITS = {
+  SUPER_ADMIN: 1,
+  ADMIN: 1,
+  MANAGER: 1,
+  FINANCE: 2
+};
+
+const countMembersByRole = (members = []) =>
+  members.reduce((counts, member) => {
+    if (member?.role) {
+      counts[member.role] = (counts[member.role] || 0) + 1;
+    }
+
+    return counts;
+  }, {});
+
+const getAssignableRoles = (roleCounts, currentRole = null) =>
+  ROLES.filter((role) => {
+    if (role === "SUPER_ADMIN") {
+      return currentRole === "SUPER_ADMIN";
+    }
+
+    const limit = EVENT_ROLE_LIMITS[role];
+
+    if (!limit) {
+      return true;
+    }
+
+    const currentCount = roleCounts[role] || 0;
+    const nextCount = currentRole === role ? currentCount - 1 : currentCount;
+
+    return nextCount < limit;
+  });
 
 export default function EventDetailPage() {
   const { eventId } = useParams();
@@ -164,11 +201,7 @@ export default function EventDetailPage() {
           : null
       );
     } catch (err) {
-      if (err?.status === 403) {
-        setExpensesError("Expenses are restricted to finance/admin roles.");
-      } else {
-        setExpensesError(err.message || "Failed to load expenses");
-      }
+      setExpensesError(err.message || "Failed to load expenses");
     } finally {
       setFinanceLoading(false);
     }
@@ -194,7 +227,12 @@ export default function EventDetailPage() {
 
   useEffect(() => {
     const query = memberSearch.trim();
-    if (!query || query.length < 2) {
+    const isSuperAdmin = (event?.members || []).some(
+      (member) =>
+        member.user?.username === user?.username && member.role === "SUPER_ADMIN"
+    );
+
+    if (!isSuperAdmin || !query || query.length < 2) {
       setMemberResults([]);
       setMemberSearchError("");
       setMemberSearchLoading(false);
@@ -207,7 +245,14 @@ export default function EventDetailPage() {
       try {
         const data = await usersApi.searchUsers(query);
         if (!isActive) return;
-        setMemberResults(data || []);
+        const usernameSet = new Set(
+          (event?.members || [])
+            .map((member) => member.user?.username)
+            .filter((username) => Boolean(username))
+        );
+        setMemberResults(
+          (data || []).filter((result) => !usernameSet.has(result.username))
+        );
         setMemberSearchError("");
       } catch (err) {
         if (!isActive) return;
@@ -223,7 +268,7 @@ export default function EventDetailPage() {
       isActive = false;
       clearTimeout(timer);
     };
-  }, [memberSearch]);
+  }, [event, memberSearch, user]);
 
   const members = useMemo(() => event?.members || [], [event]);
   const currentMemberRole = useMemo(() => {
@@ -233,12 +278,31 @@ export default function EventDetailPage() {
     );
     return current?.role || null;
   }, [members, user]);
+  const isCreator = event?.createdBy?.id === user?.id;
+  const roleCounts = useMemo(() => countMembersByRole(members), [members]);
+  const memberRoleOptions = useMemo(
+    () =>
+      getAssignableRoles(roleCounts).filter((role) => role !== "SUPER_ADMIN"),
+    [roleCounts]
+  );
+  const canManageTasks = TASK_MANAGER_ROLES.includes(currentMemberRole);
   const canManageFinance = ["SUPER_ADMIN", "ADMIN", "FINANCE"].includes(
     currentMemberRole
   );
   const canManageNotifications = ["SUPER_ADMIN", "ADMIN", "FINANCE"].includes(
     currentMemberRole
   );
+  const canManageMembers = MEMBER_MANAGER_ROLES.includes(currentMemberRole);
+  const canEditEvent = EVENT_ADMIN_ROLES.includes(currentMemberRole);
+  const canDeleteEvent = Boolean(isCreator || currentMemberRole === "SUPER_ADMIN");
+
+  useEffect(() => {
+    if (!memberRoleOptions.length || memberRoleOptions.includes(memberForm.role)) {
+      return;
+    }
+
+    setMemberForm((prev) => ({ ...prev, role: memberRoleOptions[0] }));
+  }, [memberForm.role, memberRoleOptions]);
   const taskStats = useMemo(() => {
     const summary = { PENDING: 0, IN_PROGRESS: 0, COMPLETED: 0 };
     tasks.forEach((task) => {
@@ -602,9 +666,11 @@ export default function EventDetailPage() {
           <button className="btn ghost" onClick={() => navigate("/events")}>
             Back to events
           </button>
-          <button className="btn danger" onClick={handleDeleteEvent}>
-            Delete event
-          </button>
+          {canDeleteEvent ? (
+            <button className="btn danger" onClick={handleDeleteEvent}>
+              Delete event
+            </button>
+          ) : null}
         </div>
       </section>
 
@@ -773,71 +839,69 @@ export default function EventDetailPage() {
                       ) : null}
                     </form>
                   </div>
-                ) : (
-                  <div className="card muted">
-                    You don’t have permission to send notifications.
-                  </div>
-                )}
+                ) : null}
               </div>
 
-              <div className="card">
-                <div className="panel-header">
-                  <div>
-                    <div className="panel-title">Event settings</div>
-                    <div className="panel-subtitle">
-                      Update core information and finance settings.
+              {canEditEvent ? (
+                <div className="card">
+                  <div className="panel-header">
+                    <div>
+                      <div className="panel-title">Event settings</div>
+                      <div className="panel-subtitle">
+                        Update core information and finance settings.
+                      </div>
                     </div>
                   </div>
+                  <form className="form" onSubmit={handleUpdateEvent}>
+                    <label className="field">
+                      <span>Event name</span>
+                      <input
+                        name="name"
+                        value={eventForm.name}
+                        onChange={handleEventChange}
+                      />
+                    </label>
+                    <label className="field">
+                      <span>Description</span>
+                      <textarea
+                        name="description"
+                        rows="4"
+                        value={eventForm.description}
+                        onChange={handleEventChange}
+                      />
+                    </label>
+                    <label className="field">
+                      <span>Donation UPI ID</span>
+                      <input
+                        name="donationUpiId"
+                        value={eventForm.donationUpiId}
+                        onChange={handleEventChange}
+                        placeholder="example@upi"
+                      />
+                    </label>
+                    <label className="field">
+                      <span>Funding Goal</span>
+                      <input
+                        name="fundingGoal"
+                        type="number"
+                        min="0"
+                        value={eventForm.fundingGoal}
+                        onChange={handleEventChange}
+                        placeholder="50000"
+                      />
+                    </label>
+                    <div className="form-actions">
+                      <button
+                        className="btn primary"
+                        type="submit"
+                        disabled={actionLoading}
+                      >
+                        {actionLoading ? "Saving..." : "Save changes"}
+                      </button>
+                    </div>
+                  </form>
                 </div>
-                <form className="form" onSubmit={handleUpdateEvent}>
-                  <label className="field">
-                    <span>Event name</span>
-                    <input
-                      name="name"
-                      value={eventForm.name}
-                      onChange={handleEventChange}
-                    />
-                  </label>
-                  <label className="field">
-                    <span>Description</span>
-                    <textarea
-                      name="description"
-                      rows="4"
-                      value={eventForm.description}
-                      onChange={handleEventChange}
-                    />
-                  </label>
-                  <label className="field">
-                    <span>Donation UPI ID</span>
-                    <input
-                      name="donationUpiId"
-                      value={eventForm.donationUpiId}
-                      onChange={handleEventChange}
-                      placeholder="example@upi"
-                    />
-                  </label>
-                  <label className="field">
-                    <span>Funding Goal</span>
-                    <input
-                      name="fundingGoal"
-                      type="number"
-                      min="0"
-                      value={eventForm.fundingGoal}
-                      onChange={handleEventChange}
-                      placeholder="50000"
-                    />
-                  </label>
-                  <div className="form-actions">
-                    <button
-                      className="btn primary"
-                      type="submit"
-                      disabled={actionLoading}
-                    >
-                      {actionLoading ? "Saving..." : "Save changes"}
-                    </button>
-                  </div>
-                </form>
-              </div>
+              ) : null}
             </div>
           </div>
         )}
@@ -845,110 +909,111 @@ export default function EventDetailPage() {
         {activeTab === "members" && (
           <div className="tab-panel">
             <div className="page-grid">
-              <div className="stack">
-                <div className="card">
-                  <div className="panel-header">
-                    <div>
-                      <div className="panel-title">Find member</div>
-                      <div className="panel-subtitle">
-                        Search by name or username.
-                      </div>
-                    </div>
-                  </div>
-                  <input
-                    value={memberSearch}
-                    onChange={handleMemberSearchChange}
-                    placeholder="Search users"
-                  />
-                  {memberSearchLoading ? (
-                    <div className="card-meta">Searching...</div>
-                  ) : null}
-                  {memberSearchError ? (
-                    <div className="form-error">{memberSearchError}</div>
-                  ) : null}
-                  {memberSearch &&
-                  !memberSearchLoading &&
-                  !memberResults.length ? (
-                    <div className="card muted">No users found.</div>
-                  ) : null}
-                  {memberResults.length ? (
-                    <div className="list">
-                      {memberResults.map((user) => (
-                        <div key={user.id} className="list-item">
-                          <div>
-                            <div className="list-title">{user.name}</div>
-                            <div className="list-meta">
-                              @{user.username}
-                            </div>
-                          </div>
-                          <button
-                            type="button"
-                            className="btn ghost"
-                            onClick={() =>
-                              setMemberForm((prev) => ({
-                                ...prev,
-                                username: user.username
-                              }))
-                            }
-                          >
-                            Use
-                          </button>
+              {canManageMembers ? (
+                <div className="stack">
+                  <div className="card">
+                    <div className="panel-header">
+                      <div>
+                        <div className="panel-title">Find member</div>
+                        <div className="panel-subtitle">
+                          Search by name or username.
                         </div>
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
-
-                <div className="card">
-                  <div className="panel-header">
-                    <div>
-                      <div className="panel-title">Add member</div>
-                      <div className="panel-subtitle">
-                        Assign a role and invite to the event.
                       </div>
                     </div>
-                  </div>
-                  <form className="form" onSubmit={handleAddMember}>
-                    <label className="field">
-                      <span>Username</span>
-                      <input
-                        name="username"
-                        value={memberForm.username}
-                        onChange={handleMemberChange}
-                        placeholder="username"
-                        required
-                      />
-                    </label>
-                    <label className="field">
-                      <span>Role</span>
-                      <select
-                        name="role"
-                        value={memberForm.role}
-                        onChange={handleMemberChange}
-                      >
-                        {ROLES.map((role) => (
-                          <option key={role} value={role}>
-                            {role}
-                          </option>
+                    <input
+                      value={memberSearch}
+                      onChange={handleMemberSearchChange}
+                      placeholder="Search users"
+                    />
+                    {memberSearchLoading ? (
+                      <div className="card-meta">Searching...</div>
+                    ) : null}
+                    {memberSearchError ? (
+                      <div className="form-error">{memberSearchError}</div>
+                    ) : null}
+                    {memberSearch &&
+                    !memberSearchLoading &&
+                    !memberResults.length ? (
+                      <div className="card muted">No users found.</div>
+                    ) : null}
+                    {memberResults.length ? (
+                      <div className="list">
+                        {memberResults.map((memberUser) => (
+                          <div key={memberUser.id} className="list-item">
+                            <div>
+                              <div className="list-title">{memberUser.name}</div>
+                              <div className="list-meta">@{memberUser.username}</div>
+                            </div>
+                            <button
+                              type="button"
+                              className="btn ghost"
+                              onClick={() =>
+                                setMemberForm((prev) => ({
+                                  ...prev,
+                                  username: memberUser.username
+                                }))
+                              }
+                            >
+                              Use
+                            </button>
+                          </div>
                         ))}
-                      </select>
-                    </label>
-                    <div className="form-actions">
-                      <button className="btn primary" type="submit">
-                        Add member
-                      </button>
-                    </div>
-                  </form>
-                </div>
+                      </div>
+                    ) : null}
+                  </div>
 
-              </div>
+                  <div className="card">
+                    <div className="panel-header">
+                      <div>
+                        <div className="panel-title">Add member</div>
+                        <div className="panel-subtitle">
+                          Assign a role and invite to the event.
+                        </div>
+                      </div>
+                    </div>
+                    <form className="form" onSubmit={handleAddMember}>
+                      <label className="field">
+                        <span>Username</span>
+                        <input
+                          name="username"
+                          value={memberForm.username}
+                          onChange={handleMemberChange}
+                          placeholder="username"
+                          required
+                        />
+                      </label>
+                      <label className="field">
+                        <span>Role</span>
+                        <select
+                          name="role"
+                          value={memberForm.role}
+                          onChange={handleMemberChange}
+                        >
+                          {memberRoleOptions.map((role) => (
+                            <option key={role} value={role}>
+                              {role}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <div className="form-actions">
+                        <button className="btn primary" type="submit">
+                          Add member
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                </div>
+              ) : null}
 
               <div className="card">
                 <div className="panel-header">
                   <div>
                     <div className="panel-title">Members</div>
                     <div className="panel-subtitle">
-                      Manage roles and access.
+                      {canManageMembers
+                        ? "Manage roles and access."
+                        : "View the current team and assigned roles."}
                     </div>
                   </div>
                   {members.length > 3 ? (
@@ -957,9 +1022,7 @@ export default function EventDetailPage() {
                       className="btn ghost"
                       onClick={() => setShowAllMembers((prev) => !prev)}
                     >
-                      {showAllMembers
-                        ? "Show key roles"
-                        : "Show all members"}
+                      {showAllMembers ? "Show key roles" : "Show all members"}
                     </button>
                   ) : null}
                 </div>
@@ -967,45 +1030,57 @@ export default function EventDetailPage() {
                   {(showAllMembers
                     ? members
                     : members.filter((member) =>
-                        ["SUPER_ADMIN", "MANAGER", "FINANCE"].includes(
-                          member.role
-                        )
+                        MEMBER_PREVIEW_ROLES.includes(member.role)
                       )
-                  ).map((member) => (
-                    <div key={member.userId} className="list-item">
-                      <div>
-                        <div className="list-title">{member.user.name}</div>
-                        <div className="list-meta">
-                          @{member.user.username || "no-username"}
+                  ).map((member) => {
+                    const roleOptions = getAssignableRoles(
+                      roleCounts,
+                      member.role
+                    ).filter((role) => role !== "SUPER_ADMIN");
+                    const isPrimarySuperAdmin = member.role === "SUPER_ADMIN";
+
+                    return (
+                      <div key={member.id} className="list-item">
+                        <div>
+                          <div className="list-title">{member.user.name}</div>
+                          <div className="list-meta">
+                            @{member.user.username || "no-username"}
+                          </div>
+                        </div>
+                        <div className="list-actions">
+                          {canManageMembers && !isPrimarySuperAdmin ? (
+                            <>
+                              <select
+                                value={member.role}
+                                onChange={(event) =>
+                                  handleUpdateRole(
+                                    member.user.username,
+                                    event.target.value
+                                  )
+                                }
+                              >
+                                {roleOptions.map((role) => (
+                                  <option key={role} value={role}>
+                                    {role}
+                                  </option>
+                                ))}
+                              </select>
+                              <button
+                                className="btn ghost"
+                                onClick={() =>
+                                  handleRemoveMember(member.user.username)
+                                }
+                              >
+                                Remove
+                              </button>
+                            </>
+                          ) : (
+                            <div className="badge soft">{member.role}</div>
+                          )}
                         </div>
                       </div>
-                      <div className="list-actions">
-                        <select
-                          value={member.role}
-                          onChange={(event) =>
-                            handleUpdateRole(
-                              member.user.username,
-                              event.target.value
-                            )
-                          }
-                        >
-                          {ROLES.map((role) => (
-                            <option key={role} value={role}>
-                              {role}
-                            </option>
-                          ))}
-                        </select>
-                        <button
-                          className="btn ghost"
-                          onClick={() =>
-                            handleRemoveMember(member.user.username)
-                          }
-                        >
-                          Remove
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                   {!members.length ? (
                     <div className="card muted">No members yet.</div>
                   ) : null}
@@ -1018,42 +1093,44 @@ export default function EventDetailPage() {
         {activeTab === "tasks" && (
           <div className="tab-panel">
             <div className="page-grid">
-              <div className="card">
-                <div className="panel-header">
-                  <div>
-                    <div className="panel-title">Create task</div>
-                    <div className="panel-subtitle">
-                      Assign work and track progress.
+              {canManageTasks ? (
+                <div className="card">
+                  <div className="panel-header">
+                    <div>
+                      <div className="panel-title">Create task</div>
+                      <div className="panel-subtitle">
+                        Assign work and track progress.
+                      </div>
                     </div>
                   </div>
+                  <form className="form" onSubmit={handleCreateTask}>
+                    <label className="field">
+                      <span>Task title</span>
+                      <input
+                        name="title"
+                        value={taskForm.title}
+                        onChange={handleTaskChange}
+                        placeholder="Task title"
+                        required
+                      />
+                    </label>
+                    <label className="field">
+                      <span>Description</span>
+                      <input
+                        name="description"
+                        value={taskForm.description}
+                        onChange={handleTaskChange}
+                        placeholder="Short description"
+                      />
+                    </label>
+                    <div className="form-actions">
+                      <button className="btn primary" type="submit">
+                        Add task
+                      </button>
+                    </div>
+                  </form>
                 </div>
-                <form className="form" onSubmit={handleCreateTask}>
-                  <label className="field">
-                    <span>Task title</span>
-                    <input
-                      name="title"
-                      value={taskForm.title}
-                      onChange={handleTaskChange}
-                      placeholder="Task title"
-                      required
-                    />
-                  </label>
-                  <label className="field">
-                    <span>Description</span>
-                    <input
-                      name="description"
-                      value={taskForm.description}
-                      onChange={handleTaskChange}
-                      placeholder="Short description"
-                    />
-                  </label>
-                  <div className="form-actions">
-                    <button className="btn primary" type="submit">
-                      Add task
-                    </button>
-                  </div>
-                </form>
-              </div>
+              ) : null}
 
               <div className="card">
                 <div className="panel-header">
@@ -1091,34 +1168,47 @@ export default function EventDetailPage() {
                 </div>
               </div>
               <div className="grid event-grid">
-                {tasks.map((task) => (
-                  <div key={task.id} className="card">
-                    <div className="card-title">{task.title}</div>
-                    <div className="card-desc">
-                      {task.description || "No description yet."}
+                {tasks.map((task) => {
+                  const isAssignedToCurrentUser = Array.isArray(task.assignments)
+                    ? task.assignments.some(
+                        (assignment) =>
+                          assignment.user?.id === user?.id ||
+                          assignment.user?.username === user?.username
+                      )
+                    : false;
+                  const canUpdateThisTask = canManageTasks || isAssignedToCurrentUser;
+
+                  return (
+                    <div key={task.id} className="card">
+                      <div className="card-title">{task.title}</div>
+                      <div className="card-desc">
+                        {task.description || "No description yet."}
+                      </div>
+                      <div className="card-meta">
+                        Status: <strong>{task.status}</strong>
+                      </div>
+                      <div className="card-actions">
+                        {canUpdateThisTask ? (
+                          <select
+                            value={task.status}
+                            onChange={(event) =>
+                              handleUpdateTaskStatus(task.id, event.target.value)
+                            }
+                          >
+                            {STATUSES.map((status) => (
+                              <option key={status} value={status}>
+                                {status}
+                              </option>
+                            ))}
+                          </select>
+                        ) : null}
+                        <Link to={`/tasks/${task.id}`} className="btn ghost">
+                          Details
+                        </Link>
+                      </div>
                     </div>
-                    <div className="card-meta">
-                      Status: <strong>{task.status}</strong>
-                    </div>
-                    <div className="card-actions">
-                      <select
-                        value={task.status}
-                        onChange={(event) =>
-                          handleUpdateTaskStatus(task.id, event.target.value)
-                        }
-                      >
-                        {STATUSES.map((status) => (
-                          <option key={status} value={status}>
-                            {status}
-                          </option>
-                        ))}
-                      </select>
-                      <Link to={`/tasks/${task.id}`} className="btn ghost">
-                        Details
-                      </Link>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
                 {!tasks.length ? (
                   <div className="card muted">No tasks yet.</div>
                 ) : null}
@@ -1208,130 +1298,119 @@ export default function EventDetailPage() {
             <div className="page-grid">
               <div className="stack">
                 {canManageFinance ? (
-                  <div className="card finance-card">
-                    <div className="panel-header">
-                      <div>
-                        <div className="panel-title">Record donation</div>
-                        <div className="panel-subtitle">
-                          Add a donation for verification.
+                  <>
+                    <div className="card finance-card">
+                      <div className="panel-header">
+                        <div>
+                          <div className="panel-title">Record donation</div>
+                          <div className="panel-subtitle">
+                            Add a donation for verification.
+                          </div>
                         </div>
                       </div>
-                    </div>
-                    <form className="form" onSubmit={handleCreateDonation}>
-                      <label className="field">
-                        <span>Donor name</span>
-                        <input
-                          name="donorName"
-                          value={donationForm.donorName}
-                          onChange={handleDonationChange}
-                          required
-                        />
-                      </label>
-                      <label className="field">
-                        <span>Amount</span>
-                        <input
-                          name="amount"
-                          type="number"
-                          min="1"
-                          value={donationForm.amount}
-                          onChange={handleDonationChange}
-                          required
-                        />
-                      </label>
-                      <label className="field">
-                        <span>Payment method</span>
-                        <select
-                          name="paymentMethod"
-                          value={donationForm.paymentMethod}
-                          onChange={handleDonationChange}
-                        >
-                          {PAYMENT_METHODS.map((method) => (
-                            <option key={method} value={method}>
-                              {method}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <label className="field">
-                        <span>Reference ID (optional)</span>
-                        <input
-                          name="referenceId"
-                          value={donationForm.referenceId}
-                          onChange={handleDonationChange}
-                        />
-                      </label>
-                      <div className="form-actions">
-                        <button className="btn primary" type="submit">
-                          Save donation
-                        </button>
-                      </div>
-                    </form>
-                  </div>
-                ) : (
-                  <div className="card muted">
-                    You don’t have permission to record donations.
-                  </div>
-                )}
-
-                {canManageFinance ? (
-                  <div className="card finance-card">
-                    <div className="panel-header">
-                      <div>
-                        <div className="panel-title">
-                          {isEditingExpense ? "Edit expense" : "Record expense"}
-                        </div>
-                        <div className="panel-subtitle">
-                          {isEditingExpense
-                            ? "Update the payout details before saving."
-                            : "Track outgoing payments."}
-                        </div>
-                      </div>
-                    </div>
-                    <form className="form" onSubmit={handleCreateExpense}>
-                      <label className="field">
-                        <span>Title</span>
-                        <input
-                          name="title"
-                          value={expenseForm.title}
-                          onChange={handleExpenseChange}
-                          required
-                        />
-                      </label>
-                      <label className="field">
-                        <span>Amount</span>
-                        <input
-                          name="amount"
-                          type="number"
-                          min="1"
-                          value={expenseForm.amount}
-                          onChange={handleExpenseChange}
-                          required
-                        />
-                      </label>
-                      <div className="form-actions">
-                        {isEditingExpense ? (
-                          <button
-                            type="button"
-                            className="btn ghost"
-                            onClick={handleCancelExpenseEdit}
+                      <form className="form" onSubmit={handleCreateDonation}>
+                        <label className="field">
+                          <span>Donor name</span>
+                          <input
+                            name="donorName"
+                            value={donationForm.donorName}
+                            onChange={handleDonationChange}
+                            required
+                          />
+                        </label>
+                        <label className="field">
+                          <span>Amount</span>
+                          <input
+                            name="amount"
+                            type="number"
+                            min="1"
+                            value={donationForm.amount}
+                            onChange={handleDonationChange}
+                            required
+                          />
+                        </label>
+                        <label className="field">
+                          <span>Payment method</span>
+                          <select
+                            name="paymentMethod"
+                            value={donationForm.paymentMethod}
+                            onChange={handleDonationChange}
                           >
-                            Cancel
+                            {PAYMENT_METHODS.map((method) => (
+                              <option key={method} value={method}>
+                                {method}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="field">
+                          <span>Reference ID (optional)</span>
+                          <input
+                            name="referenceId"
+                            value={donationForm.referenceId}
+                            onChange={handleDonationChange}
+                          />
+                        </label>
+                        <div className="form-actions">
+                          <button className="btn primary" type="submit">
+                            Save donation
                           </button>
-                        ) : null}
-                        <button className="btn primary" type="submit">
-                          {isEditingExpense ? "Update expense" : "Save expense"}
-                        </button>
-                      </div>
-                    </form>
-                    <div className="card-meta">
-                      Expense creation requires FINANCE, ADMIN, or SUPER_ADMIN.
+                        </div>
+                      </form>
                     </div>
-                  </div>
-                ) : (
-                  <div className="card muted">
-                    You don’t have permission to record expenses.
-                  </div>
-                )}
+
+                    <div className="card finance-card">
+                      <div className="panel-header">
+                        <div>
+                          <div className="panel-title">
+                            {isEditingExpense ? "Edit expense" : "Record expense"}
+                          </div>
+                          <div className="panel-subtitle">
+                            {isEditingExpense
+                              ? "Update the payout details before saving."
+                              : "Track outgoing payments."}
+                          </div>
+                        </div>
+                      </div>
+                      <form className="form" onSubmit={handleCreateExpense}>
+                        <label className="field">
+                          <span>Title</span>
+                          <input
+                            name="title"
+                            value={expenseForm.title}
+                            onChange={handleExpenseChange}
+                            required
+                          />
+                        </label>
+                        <label className="field">
+                          <span>Amount</span>
+                          <input
+                            name="amount"
+                            type="number"
+                            min="1"
+                            value={expenseForm.amount}
+                            onChange={handleExpenseChange}
+                            required
+                          />
+                        </label>
+                        <div className="form-actions">
+                          {isEditingExpense ? (
+                            <button
+                              type="button"
+                              className="btn ghost"
+                              onClick={handleCancelExpenseEdit}
+                            >
+                              Cancel
+                            </button>
+                          ) : null}
+                          <button className="btn primary" type="submit">
+                            {isEditingExpense ? "Update expense" : "Save expense"}
+                          </button>
+                        </div>
+                      </form>
+                    </div>
+                  </>
+                ) : null}
               </div>
 
               <div className="card">
